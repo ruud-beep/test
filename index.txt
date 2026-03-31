@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woningopname Compleet V2.24 - GBO Ventilatie</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/docx@7.5.0/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding-bottom: 100px; }
+        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+        .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 25px; border-left: 5px solid #3b82f6; transition: all 0.3s ease; }
+        .card h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-bottom: 10px; }
+        .card-error { border: 2px solid #ef4444 !important; background: #fef2f2; }
+        .hidden { display: none; }
+        .warning { background: #fff7ed; color: #9a3412; padding: 10px; border-radius: 4px; font-size: 0.9rem; margin-bottom: 15px; border: 1px solid #ffedd5; }
+        input[type="text"], input[type="number"], textarea { width: 100%; border: 1px solid #d1d5db; padding: 10px; border-radius: 6px; margin-top: 5px; }
+        .radio-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+        .radio-label { display: flex; align-items: center; cursor: pointer; padding: 5px; }
+        .radio-label input { margin-right: 10px; width: 18px; height: 18px; }
+        .extra-sub-question { margin-top: 15px; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .photo-zone { margin-top: 15px; padding: 15px; background: #f9fafb; border: 2px dashed #e5e7eb; border-radius: 6px; text-align: center; }
+        .photo-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+        .photo-item { position: relative; width: 100px; height: 100px; border-radius: 6px; overflow: hidden; border: 1px solid #ddd; }
+        .photo-item img { width: 100%; height: 100%; object-fit: cover; }
+        .delete-btn { position: absolute; top: 2px; right: 2px; background: rgba(239, 68, 68, 0.9); color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; border: none; }
+        .fab { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); cursor: pointer; border: none; z-index: 100; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="flex justify-center mb-6">
+        <img src="https://de-energieurs.nl/wp-content/uploads/2023/07/logo_green.png" alt="De Energieurs Logo" style="max-width: 200px; height: auto;">
+    </div>
+    <div class="text-center mb-10">
+        <h1 class="text-3xl font-extrabold text-gray-800">De-Energieurs Opname Tool</h1>
+        <p class="text-gray-500">versie 2.24</p>
+    </div>
+    <div id="app"></div>
+</div>
+
+<button onclick="checkAndGenerate()" class="fab">💾 Exporteer DOCX</button>
+
+<script>
+    const questions = [
+        { id: "adres", label: "Adres", type: "text" },
+        { id: "bouwjaar", label: "Bouwjaar", type: "number", min: 500, max: 2100 },
+        { id: "opmerkingen", label: "Algemene Opmerkingen", type: "text", isOptional: true },
+        { id: "q1", label: "Is er sprake van een appartement?", type: "radio", options: ["Ja", "Nee"], comment: true, photo: true, conditionalContent: true },
+        { id: "q2", label: "Aantal rekenzones?", type: "radio", options: ["1 rekenzone", "2 rekenzones", "3 of meer"], comment: true, photo: true, conditionalContent: true },
+        { id: "q3", label: "Warmteopwekking", type: "radio", options: ["Cv ketel", "Warmtepomp", "Hybride warmtepomp", "Stadsverwarming", "Gaskachel/moederhaard", "Blokverwarming", "Elektrische verwarming", "Overig"], comment: true, photo: true, isGemeenschappelijk: true, hasCheckbox: "Zijn er verschillende type warmteafgifte? Zo ja, verklaar dit bij opmerkingen"  },
+        { id: "q4", label: "Warmteafgifte", type: "radio", options: ["Lokaal", "Radiatoren/convectoren", "Luchtverwarming", "Vloerverwarming"], comment: true, photo: true, hasCheckbox: "Zijn er verschillende type warmteafgifte? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q5", label: "Aanvoer temperatuur", type: "radio", options: ["90/70", "55/47", "40/45"], comment: true, isDependent: true },
+        { id: "q6_pomp", label: "Zijn er extra circulatiepompen aanwezig?", type: "radio", options: ["Ja", "Nee"], comment: true, photo: true, isDependent: true },
+        { id: "q7", label: "Regeling verwarming", type: "radio", options: ["Kamerthermostaat", "Centrale regeling per ruimte", "Regeling met naregeling", "Onbekend"], comment: true, photo: true },
+        { id: "q8", label: "Warm tapwater (Badkamer)", type: "radio", options: ["Combi ketel", "Elektrische boiler", "Warmtepomp(boiler)", "Stadsverwarming", "Keukengeiser", "Indirect verwarmd vat"], extra: "Lengte leiding (m):", comment: true, photo: true, hasCheckbox: "Zijn er verschillende tapwater installaties aanwezig? Zo ja, verklaar dit bij opmerkingen", isGemeenschappelijk: true },
+        { id: "q9", label: "Warm tapwater (Keuken)", type: "radio", options: ["Combi ketel", "Elektrische boiler", "Quooker", "Warmtepomp(boiler)", "Stadsverwarming", "Keukengeiser", "Indirect verwarmd vat"], extra: "Lengte leiding (m):", comment: true, photo: true, hasCheckbox: "Zijn er verschillende tapwater installaties aanwezig? Zo ja, verklaar dit bij opmerkingen", isGemeenschappelijk: true },
+        { id: "q10", label: "Koeling?", type: "radio", options: ["Ja, airco", "Ja, warmtepomp", "Nee"], extra: "Welke ruimtes:", photo: true },
+        { id: "q11", label: "Ventilatie", type: "radio", options: ["A (Natuurlijk)", "B (Mech. toevoer)", "C (Mech. afvoer)", "D (Balans)", "E (Gecombineerd)"], extra: "Type (bijv C1):", isGemeenschappelijk: true },
+        { id: "q12", label: "Zonnepanelen / Zonneboiler", type: "radio", options: ["Ja PV", "Ja Zonne Boiler", "Ja beiden", "Nee"], extra: "Aantallen/Oriëntatie:", comment: true, photo: true, conditionalContent: true },
+        { id: "q13", label: "Spouwmuurisolatie", type: "radio", options: ["Ja", "Conform bouwjaar", "Nee"], extra: "Dikte (mm):", comment: true, photo: true, hasCheckbox: "Zijn er verschillende isolaties aanwezig? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q14", label: "Dakisolatie", type: "radio", options: ["Ja", "Conform bouwjaar", "Nee"], extra: "Dikte (mm):", comment: true, photo: true, hasCheckbox: "Zijn er verschillende isolaties aanwezig? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q15", label: "Vloerisolatie", type: "radio", options: ["Ja", "Conform bouwjaar", "Nee"], extra: "Dikte (mm):", comment: true, photo: true, hasCheckbox: "Zijn er verschillende isolaties aanwezig? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q16", label: "Kozijnen", type: "radio", options: ["Hout/Kunstof", "Metaal", "Metaal thermisch onderbroken"], comment: true, photo: true, hasCheckbox: "Zijn er verschillende kozijnen aanwezig? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q17", label: "Beglazing", type: "radio", options: ["EG", "DG", "HR", "HR+", "HR++", "Triple", "Anders"], comment: true, photo: true, hasCheckbox: "Zijn er verschillende beglazing aanwezig? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q18", label: "Zonwering", type: "radio", options: ["Ja", "Nee"], extra: "Type & bediening:", conditionalContent: true },
+        { id: "q19", label: "Paneel aanwezig?", type: "radio", options: ["Ja, geïsoleerd", "Ja" , "Nee"], comment: true, conditionalContent: true },
+        { id: "q20", label: "Vloer grenst aan?", type: "radio", options: ["Grond", "Kruipruimte", "AVR", "Kelder", "Buiten", "Anders"], comment: true, hasCheckbox: "Grenst vloer aan meer? Zo ja, verklaar dit bij opmerkingen" },
+        { id: "q21", label: "Wat is de oriëntatie van de voorgevel van de woning?", type: "radio", options: ["Noord", "Noordoost", "Oost", "Zuidoost", "Zuid", "Zuidwest", "West", "Noordwest"], comment: true, photo: true }
+    ];
+
+    const formData = {}; 
+    const photoData = {}; 
+
+    function renderApp() {
+        const app = document.getElementById('app');
+        app.innerHTML = ""; 
+        questions.forEach(q => {
+            const card = document.createElement('div');
+            card.className = "card" + (q.isDependent ? " hidden" : "");
+            card.id = `card_${q.id}`; 
+            
+            let html = `<h3>${q.label}</h3>`;
+            if (q.type === 'radio') {
+                html += `<div class="radio-group">`;
+                q.options.forEach(opt => {
+                    html += `<label class="radio-label"><input type="radio" name="${q.id}" value="${opt}" onchange="updateValue('${q.id}', this.value)">${opt}</label>`;
+                });
+                html += `</div>`;
+            } else {
+                html += `<input type="${q.type}" id="input_${q.id}" onchange="updateValue('${q.id}', this.value)" placeholder="${q.label}...">`;
+            }
+
+           let condClass = (q.conditionalContent) ? "hidden" : "";
+            html += `<div id="extra_content_${q.id}" class="${condClass}">`;
+
+            // DIT STUKJE VOEGT DE CHECKBOX TOE
+            if (q.hasCheckbox) {
+                html += `<div class="checkbox-container">
+                    <label style="display:flex; align-items:center; cursor:pointer;">
+                        <input type="checkbox" onchange="updateValue('${q.id}_check', this.checked ? 'Ja' : 'Nee')" style="width:20px; height:20px; margin-right:10px;">
+                        <span style="font-weight:600; color:#1e40af; font-size: 0.95em;">${q.hasCheckbox}</span>
+                    </label>
+                </div>`;
+            }
+            if (q.extra) html += `<div style="margin-top:15px;"><label style="font-size:0.9em; font-weight:600;">${q.extra}</label><input type="text" id="extra_input_${q.id}" onchange="updateValue('${q.id}_extra', this.value)"></div>`;
+            if (q.comment) html += `<div style="margin-top:15px;"><label style="font-size:0.9em; font-weight:600;">Opmerkingen:</label><textarea onchange="updateValue('${q.id}_comment', this.value)"></textarea></div>`;
+            
+            if (q.isGemeenschappelijk) {
+                html += `<div class="extra-sub-question"><label style="font-weight:600;">Gemeenschappelijk?</label><div class="flex gap-4 mt-2"><label><input type="radio" name="${q.id}_gem" value="Ja" onchange="updateValue('${q.id}_gem', 'Ja')"> Ja</label><label><input type="radio" name="${q.id}_gem" value="Nee" onchange="updateValue('${q.id}_gem', 'Nee')"> Nee</label></div><div id="gem_opp_container_${q.id}" class="hidden mt-4"><label style="font-size:0.9em; font-weight:600;">Totaal GBO systeem (m2):</label><input type="number" onchange="updateValue('${q.id}_gem_opp', this.value)"></div></div>`;
+            }
+
+            if (q.photo) html += `<div class="photo-zone" ondragover="event.preventDefault()" ondrop="handleDrop(event, '${q.id}')"><label class="photo-btn">📷 Foto's<input type="file" multiple style="display:none;" onchange="handleImage('${q.id}', this)"></label><div id="gallery_${q.id}" class="photo-grid"></div></div>`;
+            html += `</div>`;
+            card.innerHTML = html;
+            app.appendChild(card);
+        });
+    }
+
+  function updateValue(id, value) {
+        formData[id] = value;
+        const card = document.getElementById(`card_${id}`);
+        if(card) card.classList.remove('card-error');
+
+        // --- NIEUWE CODE: Automatisch opmerking invullen ---
+        if (value === "Conform bouwjaar") {
+            // Sla de tekst op in het geheugen voor de Word export
+            formData[id + '_comment'] = "Isolatie dikte niet te meten."; 
+            
+            // Zoek het opmerkingen-vak in beeld en vul de tekst daar ook in
+            if (card) {
+                const textareas = card.getElementsByTagName('textarea');
+                if (textareas.length > 0) {
+                    textareas[0].value = "Isolatie dikte niet te meten.";
+                }
+            }
+        }
+        // --- EINDE NIEUWE CODE ---
+
+        checkDependencies();
+    }
+
+    function checkDependencies() {
+        toggleSection('q1', formData['q1'] === 'Ja');
+        toggleSection('q2', formData['q2'] === '2 rekenzones' || formData['q2'] === '3 of meer');
+        toggleSection('q12', formData['q12'] && formData['q12'] !== 'Nee');
+        toggleSection('q18', formData['q18'] === 'Ja');
+        toggleSection('q19', formData['q19'] && formData['q19'] !== 'Nee');
+
+        const opwekkerOK = ["Cv ketel", "Warmtepomp", "Hybride warmtepomp", "Stadsverwarming", "Gaskachel/moederhaard", "Blokverwarming"].includes(formData['q3']);
+        toggleCard('q5', opwekkerOK && formData['q4'] !== "Luchtverwarming" && formData['q4']);
+        toggleCard('q6_pomp', ["Lokaal", "Radiatoren/convectoren", "Vloerverwarming"].includes(formData['q4']));
+
+        if ((formData['q9'] === "Elektrische boiler" || formData['q9'] === "Quooker") && !formData['q9_manually_edited']) {
+            const el = document.getElementById('extra_input_q9');
+            if(el) { el.value = "<2m"; formData['q9_extra'] = "<2m"; }
+        }
+        
+        ['q3', 'q8', 'q9', 'q11'].forEach(id => {
+            const gemOpp = document.getElementById(`gem_opp_container_${id}`);
+            if(gemOpp) formData[id + '_gem'] === 'Ja' ? gemOpp.classList.remove('hidden') : gemOpp.classList.add('hidden');
+        });
+    }
+
+    function toggleSection(id, condition) {
+        const el = document.getElementById(`extra_content_${id}`);
+        if (el) condition ? el.classList.remove('hidden') : el.classList.add('hidden');
+    }
+
+    function toggleCard(id, condition) {
+        const el = document.getElementById(`card_${id}`);
+        if (el) el.classList.toggle('hidden', !condition);
+    }
+
+function checkAndGenerate() {
+        let errors = [];
+        let missing = [];
+        
+        // Reset alle rode randen van de vorige check
+        document.querySelectorAll('.card').forEach(c => c.classList.remove('card-error'));
+
+        questions.forEach(q => {
+            const card = document.getElementById(`card_${q.id}`);
+            // We controleren alleen vragen die niet verborgen zijn en niet optioneel zijn
+            if (card && !card.classList.contains('hidden') && !q.isOptional) {
+                
+                // 1. Check of de hoofdvraag is ingevuld
+                if (!formData[q.id]) {
+                    missing.push(q.label);
+                    card.classList.add('card-error');
+                } 
+                
+                // 2. Check of het bouwjaar binnen de marge valt
+                if (q.id === "bouwjaar" && formData[q.id]) {
+                    const bj = parseInt(formData[q.id]);
+                    if (bj < 500 || bj > 2100) { 
+                        errors.push("Bouwjaar moet tussen 500 en 2100 liggen."); 
+                        card.classList.add('card-error'); 
+                    }
+                }
+                
+                // 3. Check of GBO m2 is ingevuld als 'Gemeenschappelijk' op 'Ja' staat
+                if (q.isGemeenschappelijk && formData[q.id + '_gem'] === 'Ja' && !formData[q.id + '_gem_opp']) {
+                    errors.push(`${q.label}: GBO m2 is verplicht bij gemeenschappelijke installatie.`);
+                    card.classList.add('card-error');
+                }
+            }
+        });
+
+        // Als er fouten of ontbrekende vragen zijn, toon dan een keuze-venster
+        if (missing.length > 0 || errors.length > 0) {
+            let msg = "Let op: Er zijn onvolledigheden gevonden:\n\n";
+            
+            if (missing.length > 0) {
+                msg += "Niet ingevuld:\n- " + missing.join("\n- ") + "\n\n";
+            }
+            if (errors.length > 0) {
+                msg += "Fouten:\n- " + errors.join("\n- ") + "\n\n";
+            }
+            
+            msg += "Wil je toch doorgaan met opslaan?";
+            
+            // confirm() geeft een OK (true) of Annuleren (false) knop
+            if (!confirm(msg)) {
+                return; // Stop de functie hier als de gebruiker op 'Annuleren' klikt
+            }
+        }
+        
+        // Als alles goed is OF de gebruiker heeft op OK geklikt bij de waarschuwing:
+        generateWord();
+    }
+
+    function handleImage(id, input) { Array.from(input.files).forEach(f => processFile(f, id)); }
+    function handleDrop(e, id) { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => processFile(f, id)); }
+    function processFile(file, id) {
+        const r = new FileReader();
+        r.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = 800; c.height = img.height * (800 / img.width);
+                c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                if (!photoData[id]) photoData[id] = [];
+                photoData[id].push(c.toDataURL('image/jpeg', 0.7));
+                renderGallery(id);
+            }
+        }
+        r.readAsDataURL(file);
+    }
+    function renderGallery(id) {
+        const g = document.getElementById(`gallery_${id}`);
+        g.innerHTML = "";
+        (photoData[id] || []).forEach((img, i) => {
+            const d = document.createElement('div');
+            d.className = "photo-item";
+            d.innerHTML = `<img src="${img}"><button class="delete-btn" onclick="photoData['${id}'].splice(${i},1);renderGallery('${id}')">&times;</button>`;
+            g.appendChild(d);
+        });
+    }
+async function generateWord() {
+        // Let op: 'AlignmentType' is toegevoegd aan de lijst hieronder
+        const { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun, AlignmentType } = docx;
+        const children = [];
+
+        // --- NIEUW: LOGO TOEVOEGEN AAN WORD DOCUMENT ---
+        try {
+            // De link naar jouw logo
+            const logoUrl = "https://de-energieurs.nl/wp-content/uploads/2023/07/logo_green.png";
+            const response = await fetch(logoUrl);
+            const blob = await response.blob();
+            const buffer = await blob.arrayBuffer();
+
+            // Voeg het logo toe aan het begin van het document
+            children.push(new Paragraph({
+                children: [
+                    new ImageRun({
+                        data: buffer,
+                        transformation: { width: 200, height: 65 } // Breedte en hoogte in pixels
+                    })
+                ],
+                alignment: AlignmentType.CENTER // Zet het logo in het midden
+            }));
+            
+            // Een witregel onder het logo
+            children.push(new Paragraph({ text: "" }));
+            
+        } catch (error) {
+            console.warn("Logo kon niet worden geladen (mogelijk door serverbeveiliging/CORS).", error);
+        }
+        // --- EINDE LOGO ---
+
+        // De hoofdtitel van het rapport
+        children.push(new Paragraph({ text: "Woningopname Rapport", heading: HeadingLevel.HEADING_1 }));
+        
+        // Vanaf hier gaat de code weer verder zoals je gewend bent:
+        for (const q of questions) {            const card = document.getElementById(`card_${q.id}`);
+            if (!card || card.classList.contains('hidden')) continue;
+            children.push(new Paragraph({ children: [new TextRun({ text: q.label, bold: true, color: "2E75B6" })], spacing: { before: 200 } }));
+            children.push(new Paragraph({ text: `Antwoord: ${formData[q.id] || "-"}` }));
+            if (formData[q.id + '_gem']) children.push(new Paragraph({ text: `Gemeenschappelijk: ${formData[q.id + '_gem']} ${formData[q.id + '_gem_opp'] ? '(' + formData[q.id + '_gem_opp'] + ' m2)' : ''}`, italics: true }));
+            if (formData[q.id + '_extra']) children.push(new Paragraph({ text: `Extra: ${formData[q.id + '_extra']}` }));
+            if (formData[q.id + '_comment']) children.push(new Paragraph({ text: `Opmerking: ${formData[q.id + '_comment']}`, color: "666666" }));
+            if (photoData[q.id]) {
+                for (const pic of photoData[q.id]) {
+                    const buf = await (await fetch(pic)).arrayBuffer();
+                    children.push(new Paragraph({ children: [new ImageRun({ data: buf, transformation: { width: 300, height: 200 } })] }));
+                }
+            }
+        }
+        Packer.toBlob(new Document({ sections: [{ children }] })).then(b => saveAs(b, `Opname_${formData['adres'] || 'rapport'}.docx`));
+    }// Ondersteuning voor het plakken (paste) van foto's
+    window.addEventListener('paste', function(e) {
+        // Zoek de kaart waar de gebruiker op dit moment met de muis/cursor is
+        const activeElement = document.activeElement;
+        const card = activeElement.closest('.card');
+        
+        if (card) {
+            const questionId = card.id.replace('card_', '');
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            
+            for (const item of items) {
+                if (item.kind === 'file' && item.type.includes('image')) {
+                    const file = item.getAsFile();
+                    processFile(file, questionId); // Hergebruikt de bestaande verwerkingsfunctie
+                }
+            }
+        } else {
+            // Optioneel: als er geen specifieke kaart geselecteerd is, 
+            // kun je de gebruiker waarschuwen of niets doen.
+            console.log("Klik eerst in een vak om een foto te plakken.");
+        }
+    });
+    renderApp();
+</script>
+</body>
+</html>
